@@ -606,7 +606,7 @@ sector:
   dac: true
   co2_vent: false
   central_heat_vent: false
-  allam_cycle: false
+  allam_cycle_gas: false
   hydrogen_fuel_cell: true
   hydrogen_turbine: false
   SMR: true
@@ -648,7 +648,6 @@ sector:
     methanol_reforming: false
     methanol_reforming_cc: false
     methanol_to_kerosene: false
-    methanol_to_olefins: false
     methanol_to_power:
       ccgt: false
       ccgt_cc: false
@@ -694,8 +693,10 @@ sector:
   conventional_generation:
     OCGT: gas
   biomass_to_liquid: false
+  biomass_to_liquid_cc: false
   electrobiofuels: false
   biosng: false
+  biosng_cc: false
   bioH2: false
   municipal_solid_waste: false
   limit_max_growth:
