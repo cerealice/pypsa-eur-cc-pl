@@ -189,13 +189,13 @@ scenario_labels = {
 
 
 root_dir = "C:/Users/Dibella/Desktop/CMCC/pypsa-adb-industry/"
-res_dir = "results_october/"
+res_dir = "results_april/results/"
 scenario = "base_eu_regain"
 regions_fn = root_dir + "resources/" + scenario + "/regions_onshore_base_s_39.geojson"
 
 networks = load_networks(scenarios, years, root_dir, res_dir)
 
-with open(root_dir + res_dir + "base_reg_regain/configs/config.base_s_39___2030.yaml") as config_file:
+with open(root_dir + res_dir + "base_reg_maintain/configs/config.base_s_39___2030.yaml") as config_file:
     config = yaml.safe_load(config_file)
 
 regions = gpd.read_file(regions_fn).set_index("name")
@@ -215,6 +215,14 @@ commodity_search_terms = {
     "cement": "cement",
     "hvc": "HVC",
     # "H2": "H2",
+}
+
+# Conversion factors from MWh to tons for energy-based commodity buses.
+# Steel, cement, and HVC buses are already in t/h so their factor is 1.0.
+# NH3 bus is in MWh_NH3 (load set via MWh_NH3_per_tNH3); methanol bus is in MWh_LHV.
+commodity_mwh_per_t = {
+    "NH3": config["industry"]["MWh_NH3_per_tNH3"],                  # 5.166 MWh/t_NH3
+    "industry methanol": config["sector"]["MWh_MeOH_per_tCO2"] * (44 / 32),  # ≈5.54 MWh/t_MeOH (CO2 mol. wt / MeOH mol. wt)
 }
 
 max_total_prod = 0
@@ -238,9 +246,14 @@ for (scenario, year), n in networks.items():
 
         # Assign countries and exclude EU aggregate
         links["country"] = links.index.str[:2]
-        prod = -n.links_t.p1[links.index].sum() * timestep
+        # Original (mixed units — NH3 and methanol buses are in MWh, not t):
+        # prod = -n.links_t.p1[links.index].sum() * timestep
+        # prod.index = prod.index.str[:2]
+        # prod = prod.groupby(prod.index).sum() / 1e9  # Gt
+        mwh_per_t = commodity_mwh_per_t.get(commodity, 1.0)  # 1.0 for t-based buses (steel, cement, HVC)
+        prod = -n.links_t.p1[links.index].sum() * timestep / mwh_per_t
         prod.index = prod.index.str[:2]
-        prod = prod.groupby(prod.index).sum() / 1e6  # Gt
+        prod = prod.groupby(prod.index).sum() / 1e6  # Mt
         prod = prod[prod.index != "EU"]
 
         # Accumulate into total production
@@ -252,14 +265,47 @@ for (scenario, year), n in networks.items():
     # Save per-scenario/year results
     total_prod_results[(scenario, year)] = total_prod
 
-
+# %%
+max_total_prod = 0
+total_prod_results = {}
+commodity_prod_results = {}  # (scenario, year) -> DataFrame[country x commodity]
+for (scenario, year), n in networks.items():
+    assign_country(n)
+    timestep = n.snapshot_weightings.iloc[0, 0]
+    total_prod = pd.Series(dtype=float)
+    commodity_prod = {}  # commodity -> Series[country]
+    for commodity, search_term in commodity_search_terms.items():
+        # Find links matching this commodity
+        links = n.links[n.links['bus1'].str.contains(search_term, case=False, na=False)].copy()
+        if links.empty:
+            continue
+        if commodity == "cement":
+            # Exclude cement "process emissions" links
+            links = links[~links.index.str.contains("process emissions", case=False, na=False)]
+        # Assign countries and exclude EU aggregate
+        links["country"] = links.index.str[:2]
+        mwh_per_t = commodity_mwh_per_t.get(commodity, 1.0)  # 1.0 for t-based buses (steel, cement, HVC)
+        prod = -n.links_t.p1[links.index].sum() * timestep / mwh_per_t
+        prod.index = prod.index.str[:2]
+        prod = prod.groupby(prod.index).sum() / 1e6  # Mt
+        prod = prod[prod.index != "EU"]
+        # Store per-commodity series
+        commodity_prod[commodity] = prod
+        # Accumulate into total production
+        total_prod = total_prod.add(prod, fill_value=0)
+    # Build country x commodity DataFrame (fills 0 for missing country/commodity combos)
+    commodity_prod_results[(scenario, year)] = pd.DataFrame(commodity_prod).fillna(0)
+    # Track global maximum
+    max_total_prod = max(max_total_prod, total_prod.max())
+    # Save per-scenario/year results
+    total_prod_results[(scenario, year)] = total_prod
 
 # %%
 
 # EXTRA PART FOR 2024
 
 # --- CONFIGURATION ---
-csv_path = '../plots_general/capacities_s_39.csv'  # Replace with your CSV file path
+csv_path = '../plots_general/capacities_s_39.csv'
 
 
 # Load full dataframe (if not already loaded)
@@ -276,14 +322,14 @@ df_by_tec = df_grouped_all.sum()/1e3
 total_prod_kt = df_grouped_all.sum(axis=1)
 
 
-# Convert to Gt
-total_prod_gt = total_prod_kt / 1e6
+# Convert to Mt
+total_prod_mt = total_prod_kt / 1e3
 
 # For each scenario, sum total production across all countries & technologies for 2024
 for scenario in scenarios:
     
     # Store in dictionary with a special key, e.g.:
-    total_prod_results[(scenario, 2024)] = total_prod_gt
+    total_prod_results[(scenario, 2024)] = total_prod_mt
 
 
 # %%
@@ -313,11 +359,11 @@ for scenario in scenarios:
 
 
 vmin = 0
-v1 = 0.1
-v1_plus = 0.35
-v2 = scenario_max_total_prod['policy_eu_deindustrial']
-v3 = scenario_max_total_prod['policy_reg_deindustrial']
-v4 = scenario_max_total_prod['policy_reg_regain']
+v1 = 3
+v1_plus = 25
+v2 = 50
+v3 = 70
+v4 = 90
 vmax = max_total_prod
 
 # Normalize your points between 0 and 1 for colormap creation
@@ -340,7 +386,7 @@ norm = BoundaryNorm(boundaries, ncolors=plt.get_cmap('bwr').N, clip=True)
     
 
 
-fig2024, ax2024 = plt.subplots(1, 1, figsize=(4, 4), subplot_kw={"projection": proj})
+fig2024, ax2024 = plt.subplots(1, 1, figsize=(6, 6), subplot_kw={"projection": proj})
 
 # Pick any scenario for 2024 since it’s the same across all
 scenario_for_2024 = scenarios[0]
@@ -362,15 +408,15 @@ ax2024.set_facecolor("white")
 ax2024.set_axis_off()
 
 plt.tight_layout()
-plt.savefig("graphs/total_industrial_production_2024_single_map.png", bbox_inches='tight')
+plt.savefig("graphs/total_industrial_production_2024_single_map.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 years_grid = [2030, 2040, 2050]
 
 fig, axes = plt.subplots(
-    len(scenarios), 
+    len(scenarios),
     len(years_grid),
-    figsize=(3.5 * len(years_grid), 3.5 * len(scenarios)),
+    figsize=(4.5 * len(years_grid), 4.5 * len(scenarios)),
     subplot_kw={"projection": proj}
 )
 
@@ -432,7 +478,7 @@ line_y = (row2_center + row3_center) / 2 - (row2_center + row3_center) / 100
 fig.lines.append(plt.Line2D([0, 1], [line_y, line_y], transform=fig.transFigure, color='black', linewidth=1.5))
 
 plt.tight_layout()
-plt.savefig("graphs/total_industrial_production_per_country_2030_2040_2050.png", bbox_inches='tight')
+plt.savefig("graphs/total_industrial_production_per_country_2030_2040_2050.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 
@@ -454,7 +500,7 @@ for year in years:
     for scenario in scenarios:
         cwd = os.getcwd()
         parent_dir = os.path.dirname(os.path.dirname(cwd))
-        file_path = os.path.join(parent_dir, "results_october", scenario, "networks", f"base_s_39___{year}.nc")
+        file_path = os.path.join(parent_dir, res_dir, scenario, "networks", f"base_s_39___{year}.nc")
         
         n = pypsa.Network(file_path)
         
@@ -493,7 +539,7 @@ for year in years:
     for scenario in scenarios:
         cwd = os.getcwd()
         parent_dir = os.path.dirname(os.path.dirname(cwd))
-        file_path = os.path.join(parent_dir, "results_october", scenario, "networks", f"base_s_39___{year}.nc")
+        file_path = os.path.join(parent_dir, res_dir, scenario, "networks", f"base_s_39___{year}.nc")
         n = pypsa.Network(file_path)
         timestep = n.snapshot_weightings.iloc[0,0]
         
@@ -779,7 +825,7 @@ def industrial_elec_per_country(networks, scenarios, years):
 """
 years = [2030, 2040, 2050]
 root_dir = "C:/Users/Dibella/Desktop/CMCC/pypsa-adb-industry/"
-res_dir = "results_october/"
+res_dir = "results_april/"
 scenario = "base_eu_regain"
 regions_fn = root_dir + "resources/" + scenario + "/regions_onshore_base_s_39.geojson"
 
@@ -931,4 +977,4 @@ combined_img.paste(img_costs_labeled, (0, h1))          # below a (c)
 combined_img.paste(img_grid_labeled, (w1, 0))           # right side (b, now square)
 
 # Save combined image
-combined_img.save("graphs/combined_layout_totsyscost.png")
+combined_img.save("graphs/combined_layout_totsyscost.png", dpi=(300, 300))

@@ -127,22 +127,22 @@ parent_dir = os.path.dirname(os.path.dirname(cwd))
 
 for scenario in scenarios:
     for year in years[1:]:
-        file_path = os.path.join(parent_dir, "results_october", scenario, "networks", f"base_s_39___{year}.nc")
+        file_path = os.path.join(parent_dir, "results_april/results", scenario, "networks", f"base_s_39___{year}.nc")
         n = pypsa.Network(file_path)
 
-        price_data["steel"].loc[scenario, year] = weighted_average_marginal_price(n, keyword="steel") / 1e3
-        price_data["cement"].loc[scenario, year] = weighted_average_marginal_price(n, keyword="cement", exclude_labels=["process emissions"]) / 1e3
+        price_data["steel"].loc[scenario, year] = weighted_average_marginal_price(n, keyword="steel") / 1000  # bus in kt → €/kt → €/t
+        price_data["cement"].loc[scenario, year] = weighted_average_marginal_price(n, keyword="cement", exclude_labels=["process emissions"]) 
         price_data["ammonia"].loc[scenario, year] = weighted_average_marginal_price(n, keyword="NH3") * lhv_ammonia
         price_data["methanol"].loc[scenario, year] = weighted_average_marginal_price(n, keyword='industry methanol') * lhv_methanol
 
         co2_price = -n.global_constraints.loc["CO2Limit", "mu"]
         extra_methanol_cost = 0.2482 * lhv_methanol * co2_price
-        extra_hvc_cost = 0.2571 * 12.47 * co2_price
+        extra_hvc_cost = decay_emis_hvc * co2_price  # 0.2571 t_CO2/MWh_naphtha * ft_to_hvc MWh/t_HVC
 
         price_data["methanol_noco2"].loc[scenario, year] = price_data["methanol"].loc[scenario, year] - extra_methanol_cost
         #price_data["methanol_noco2"].loc[scenario, year] = weighted_average_marginal_price(n, keyword='methanol', exclude_labels=["industry", "shipping"]) * lhv_methanol
 
-        hvc_price = weighted_average_marginal_price(n, keyword="HVC") / 1e3
+        hvc_price = weighted_average_marginal_price(n, keyword="HVC") / 1000  # bus in kt → €/kt → €/t
         price_data["HVC"].loc[scenario, year] = hvc_price
         price_data["HVC_noco2"].loc[scenario, year] = hvc_price - extra_hvc_cost
 
@@ -545,6 +545,21 @@ for idx, (commodity, ax) in enumerate(zip(commodities, axes)):
     if idx == 0:
         ax.set_ylabel("Price [EUR/t]")
         ax.legend(fontsize=8, loc="lower left")
+    
+    
+    if commodity.lower() == "methanol":
+        # Add line style legend inside the hydrogen subplot
+        ax.legend(
+            handles=[
+                Line2D([0], [0], color='black', linestyle='-', label="Includes EOL CO₂ cost"),
+                Line2D([0], [0], color='black', linestyle='--', label="Excludes EOL CO₂ cost")
+            ],
+            loc="lower right",
+            bbox_to_anchor=(1, 0.1),
+            fontsize=8,
+            frameon=True
+        )
+        
 
 plt.tight_layout(rect=[0, 0.15, 1, 1])
 plt.savefig("./graphs/commodity_prices_hist.png", dpi=300, bbox_inches="tight")

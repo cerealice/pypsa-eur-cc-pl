@@ -16,7 +16,7 @@ import matplotlib.ticker as ticker
 years = [2030, 2040, 2050]
 technologies = ['steel','NH3', 'methanol']#,"H2"]
 root_dir = "C:/Users/Dibella/Desktop/CMCC/pypsa-adb-industry/"
-res_dir = "results_october/"
+res_dir = "results_april/results/"
 lhv_ammonia = 5.166  # MWh / t
 lhv_methanol = 5.528  # MWh / t
 
@@ -277,9 +277,9 @@ def get_steel_prod_eu_import(network):
     share_ch4 = 1 - share_h2
 
     # --- Production breakdown ---
-    scrap_eaf = total_eaf * share_scrap / 1e3
-    hbi_import_eaf = total_eaf * share_import / 1e3
-    dri_eaf = total_eaf * share_dri / 1e3
+    scrap_eaf = total_eaf * share_scrap / 1e6
+    hbi_import_eaf = total_eaf * share_import / 1e6
+    dri_eaf = total_eaf * share_dri / 1e6
 
     ch4_eaf = dri_eaf * share_ch4
 
@@ -290,8 +290,8 @@ def get_steel_prod_eu_import(network):
     grey_h2_eaf = dri_eaf * share_h2 * shares["Grey"].mean() 
 
     # BOF breakdown
-    bof_uncapt = steel_bof.sum() * share_uncaptured / 1e3
-    bof_capt = steel_bof.sum() * share_captured / 1e3
+    bof_uncapt = steel_bof.sum() * share_uncaptured / 1e6
+    bof_capt = steel_bof.sum() * share_captured / 1e6
 
     return pd.Series({
         'Scrap-EAF': scrap_eaf,
@@ -929,7 +929,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # Paths to your two plots
 img_path_production = "graphs/european_production_stacked_import.png"
-img_path_prices = "graphs/costs_emissions_import_withdiff_all.png"
+img_path_prices = "graphs_paper/costs_emissions_import_withdiff_all.png"
 
 # Open images
 img_production = Image.open(img_path_production)
@@ -969,153 +969,3 @@ combined_img.paste(img_prices_labeled, (0, img_production_labeled.height))
 
 # Save combined image
 combined_img.save("graphs/combined_production_prices_labeled.png")
-
-
-"""
-# %% COMMODITY PRICES
-
-
-years = [2020, 2030, 2040, 2050]
-
-lhv_ammonia = 5.166  # MWh / t
-lhv_methanol = 5.528  # MWh / t
-naphtha_to_hvc = (2.31 * 12.47) * 1000
-decay_emis_hvc = 0.2571 * naphtha_to_hvc / 1e3
-lhv_hydrogen = 33.33 #MWh/t
-
-# === HISTORICAL VALUES ===
-hist_2020_prices = {
-    "steel": 415,
-    "cement": 93,
-    "ammonia": 470,
-    "methanol": 326,
-    "HVC": 600,
-    "H2": 1800
-}
-
-ft_to_hvc = 2.31 * 12.47
-# Data from figure 1 Neumann et al. https://arxiv.org/pdf/2404.03927
-import_prices = {
-    "steel": 395, #€/tHBI
-    "ammonia": 116.65 * lhv_ammonia ,
-    "methanol": 137.65 * lhv_methanol,
-    #"H2": 132.1 * lhv_hydrogen
-}
-
-
-def weighted_average_marginal_price(n, keyword, exclude_labels=None):
-    mprice_cols = n.buses_t.marginal_price.columns[
-        n.buses_t.marginal_price.columns.str.contains(keyword)
-    ]
-    if exclude_labels:
-        for label in exclude_labels:
-            mprice_cols = mprice_cols[~mprice_cols.str.contains(label)]
-    mprice = n.buses_t.marginal_price.loc[:, mprice_cols].where(lambda df: df >= 0, 0)
-    relevant_loads = mprice.columns.intersection(n.loads.index)
-    mprice_loads = mprice[relevant_loads]
-    loads_w_mprice = n.loads_t.p[relevant_loads]
-    
-    if keyword == "H2":
-        loads_links = n.links[n.links.bus1.str.endswith(' H2') & ~n.links.index.str.contains('pipeline')]
-        loads = -n.links_t.p1.loc[:, loads_links.index]
-        loads.columns = loads.columns.str[:2]
-        loads_w_mprice = loads.T.groupby(level=0).sum().T
-        mprice.columns = mprice.columns.str[:2]
-        mprice_loads = mprice.T.groupby(level=0).sum().T
-    elif keyword == 'methanol':
-        loads_links = n.loads[n.loads.index.str.endswith('methanol')]
-        loads_w_mprice = n.loads_t.p.loc[:, loads_links.index]
-        #price_per_load = mprice_loads * loads
-        #loads.columns = loads.columns.str[:2]
-        #loads_w_mprice = loads.T.groupby(level=0).sum().T
-        #mprice.columns = mprice.columns.str[:2]
-        #mprice_loads = mprice.T.groupby(level=0).sum().T
-
-        
-    total_costs = (mprice_loads * loads_w_mprice).sum().sum()
-    weighted_avg = total_costs / loads_w_mprice.sum().sum()
-
-    return weighted_avg
-
-# === INIT STORAGE ===
-price_data = {commodity: pd.DataFrame(index=scenarios, columns=years) for commodity in hist_2020_prices.keys()}
-for commodity, val in hist_2020_prices.items():
-    price_data[commodity][2020] = val
-
-# === LOAD AND COMPUTE PRICES ===
-max_value = 0
-for scenario in scenarios:
-    for year in years[1:]:
-        file_path = os.path.join(root_dir, "results_october", scenario, "networks", f"base_s_39___{year}.nc")
-        n = pypsa.Network(file_path)
-        timestep = n.snapshot_weightings.iloc[0, 0]
-
-        price_data["steel"].loc[scenario, year] = weighted_average_marginal_price(n, keyword="steel") / 1e3
-        price_data["cement"].loc[scenario, year] = weighted_average_marginal_price(n, keyword="cement", exclude_labels=["process emissions"]) / 1e3
-        price_data["ammonia"].loc[scenario, year] = weighted_average_marginal_price(n, keyword="NH3") * lhv_ammonia
-
-        price_data["methanol"].loc[scenario, year] = weighted_average_marginal_price(n, keyword='industry methanol', exclude_labels=["import"]) * lhv_methanol
-        co2_price = -n.global_constraints.loc["CO2Limit", "mu"]
-        extra_methanol_cost = 0.248 * lhv_methanol * co2_price
-        #price_data["methanol"].loc[scenario, year] += extra_methanol_cost # The models sees this in different demands
-        
-        hvc_price = weighted_average_marginal_price(n, keyword="HVC") / 1e3
-        extra_hvc_cost = 0.2571 * 12.47 * co2_price
-        price_data["HVC"].loc[scenario, year] = hvc_price #- extra_hvc_cost
-        price_data["H2"].loc[scenario, year] = weighted_average_marginal_price(n, keyword="H2", exclude_labels=["pipeline"]) * lhv_hydrogen
-
-        max_value = max(max_value, price_data["HVC"].loc[scenario, year])
-
-# %%
-
-scenario_colors = {
-    "import_policy_reg_deindustrial": "#8C47D7",
-    "import_policy_reg_regain": "#927F63"
-}
-
-# === PLOT ===
-commodities = ["steel", "ammonia", "methanol",  "H2"]
-fig, axes = plt.subplots(1, len(commodities), figsize=(12, 6), sharex=True, sharey=False)
-
-for idx, (commodity, ax) in enumerate(zip(commodities, axes)):
-    for scenario in scenarios:
-        label = scenario_labels[scenario] if idx == 0 else None
-        ax.plot(
-            years,
-            price_data[commodity].loc[scenario],
-            marker="o",
-            linestyle="-",
-            label=label,
-            color=scenario_colors.get(scenario, 'black')
-        )
-
-    # Skip cement (no import band for it)
-    if commodity != "H2":
-        # Draw import cost band
-        ax.plot(
-            years,
-            [import_prices[commodity]] * len(years),
-            color="grey",
-            linestyle="--",
-            label="Import price" if idx == 0 else None
-        )
-
-    # Titles and layout
-    custom_titles = {
-        "h2": "Hydrogen"
-    }
-
-    title = custom_titles.get(commodity.lower(), commodity.title())
-    ax.set_title(f"{title.capitalize()}")
-    ax.set_xticks(years)
-    ax.set_ylim(bottom=0)
-    if idx == 0:
-        ax.set_ylabel("Price [€/t]")
-        ax.legend(fontsize=8, loc="lower left")  # Legend only on first subplot
-
-    ax.grid(True, linestyle='--')
-
-plt.tight_layout()
-plt.savefig("./graphs/commodity_prices_import.png", dpi=300)
-plt.show()
-"""

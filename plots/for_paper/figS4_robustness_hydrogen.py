@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # CONFIG
 root_dir = "C:/Users/Dibella/Desktop/CMCC/pypsa-adb-industry/"
-res_dir = "results_september_new/"
+res_dir = "results_april/results/"
 years = [2030, 2040, 2050]
 technologies = ['steel', 'cement', 'NH3', 'methanol', 'HVC',"H2"]
 
@@ -694,7 +694,7 @@ max_value = 0
 price_extra = pd.DataFrame(index=scenarios, columns=years)
 for scenario in scenarios:
     for year in years[1:]:
-        file_path = os.path.join(root_dir,"results_september_new", scenario, "networks", f"base_s_39___{year}.nc")
+        file_path = os.path.join(root_dir, res_dir, scenario, "networks", f"base_s_39___{year}.nc")
         n = pypsa.Network(file_path)
         timestep = n.snapshot_weightings.iloc[0, 0]
 

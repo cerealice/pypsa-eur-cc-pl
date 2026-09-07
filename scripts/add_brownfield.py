@@ -426,7 +426,6 @@ def reduce_capacities(n, year):
             n.links.loc[plant, "p_nom"] = 0.0
 
 
-
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake

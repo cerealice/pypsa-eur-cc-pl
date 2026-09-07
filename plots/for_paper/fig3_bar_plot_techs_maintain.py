@@ -18,7 +18,7 @@ from matplotlib.patches import Rectangle
 years = [2030, 2040, 2050]
 technologies = ['steel', 'cement', 'NH3', 'methanol', 'HVC']#,"H2"]
 root_dir = "C:/Users/Dibella/Desktop/CMCC/pypsa-adb-industry/"
-res_dir = "results_october/"
+res_dir = "results_april/results/"
 lhv_ammonia = 5.166  # MWh / t
 lhv_methanol = 5.528  # MWh / t
 
@@ -317,14 +317,14 @@ def get_steel_prod_eu(network):
     
 
     # Calculate production categories per country
-    steel_prod_scrap_eaf = (steel_eaf * share_scrap).sum() / 1e3  # Mt
-    steel_prod_green_el_h2_eaf = (steel_eaf * share_dri_h2 * shares["Green El"]).sum() / 1e3  # Mt
-    steel_prod_grey_el_h2_eaf = (steel_eaf * share_dri_h2 * shares["Grey El"]).sum() / 1e3  # Mt
-    steel_prod_blue_h2_eaf = (steel_eaf * share_dri_h2 * shares["Blue"]).sum() / 1e3  # Mt
-    steel_prod_black_h2_eaf = (steel_eaf * share_dri_h2 * shares["Grey"]).sum() / 1e3
-    steel_prod_ch4_eaf = (steel_eaf * share_dri_ch4).sum() / 1e3
-    steel_prod_bof_uncapt = steel_bof.sum() * share_uncaptured  / 1e3
-    steel_prod_bof_capt = steel_bof.sum() * share_captured  / 1e3
+    steel_prod_scrap_eaf = (steel_eaf * share_scrap).sum() / 1e6  # Mt
+    steel_prod_green_el_h2_eaf = (steel_eaf * share_dri_h2 * shares["Green El"]).sum() / 1e6  # Mt
+    steel_prod_grey_el_h2_eaf = (steel_eaf * share_dri_h2 * shares["Grey El"]).sum() / 1e6  # Mt
+    steel_prod_blue_h2_eaf = (steel_eaf * share_dri_h2 * shares["Blue"]).sum() / 1e6  # Mt
+    steel_prod_black_h2_eaf = (steel_eaf * share_dri_h2 * shares["Grey"]).sum() / 1e6
+    steel_prod_ch4_eaf = (steel_eaf * share_dri_ch4).sum() / 1e6
+    steel_prod_bof_uncapt = steel_bof.sum() * share_uncaptured  / 1e6
+    steel_prod_bof_capt = steel_bof.sum() * share_captured  / 1e6
 
     return pd.Series({
         'Scrap-EAF': steel_prod_scrap_eaf,
@@ -365,7 +365,7 @@ def get_cement_prod_eu(n):
     share_uncaptured = 1 - share_captured
 
     # Convert total production from MWh to Mt if needed (optional scaling here)
-    cement_total_mt = total_cement_mwh / 1e3
+    cement_total_mt = total_cement_mwh / 1e6
 
     return pd.Series({
         'With CCS': cement_total_mt * share_captured,
@@ -452,8 +452,8 @@ def get_hvc_prod_eu(n):
     share_fossil = max(0.0, 1 - avg_share_bio - avg_share_ft)
 
     # Convert from kt to Mt (using 1000 divisor)
-    #hvc_methanol_mt = hvc_methanol / 1e3
-    hvc_naphtha_mt = hvc_naphtha / 1e3
+    #hvc_methanol_mt = hvc_methanol / 1e6
+    hvc_naphtha_mt = hvc_naphtha / 1e6
 
     return pd.Series({
         "Fossil naphtha": hvc_naphtha_mt * share_fossil,
@@ -768,7 +768,9 @@ scenarios = [
 
 nice_scenario_names = {
     "policy_reg_deindustrial": "Continued Decline",
+    "policy_eu_regain": "Reindustrial EU",
     "base_reg_maintain": "Stabilization",
+    "base_reg_regain": "Base Reindustr",
     "policy_reg_regain": "Reindustrialization",
     "policy_reg_maintain": "Stabilization"
 }
@@ -795,44 +797,4 @@ plot_total_eu_production_by_tech_reversed(
     technologies=technologies,
     years=years,
     save_path="graphs/european_production_stacked_wmaintain.png"
-)
-
-# %%
-
-scenarios = [
-    "base_reg_maintain",
-    "policy_reg_deindustrial",
-    "policy_reg_maintain",
-    "ff55_iter_1"
-]
-
-nice_scenario_names = {
-    "policy_reg_deindustrial": "Continued Decline",
-    "base_reg_maintain": "Stabilization",
-    "ff55_iter_1": "FIDELIO",
-    "policy_reg_maintain": "Stabilization"
-}
-
-
-
-tech_ymax = {
-    "steel": 210,        
-    "cement": 260,
-    "nh3": 20,
-    "methanol": 50,
-    "hvc": 80,
-    #"h2": 150
-}
-
-# 1. Load all networks once
-networks = load_networks(scenarios, years, root_dir, res_dir)
-
-# %% 
-plot_total_eu_production_by_tech_reversed(
-    networks=networks,
-    scenarios=scenarios,
-    nice_scenario_names=nice_scenario_names,
-    technologies=technologies,
-    years=years,
-    save_path="graphs/european_production_stacked_wmaintain_FIDELIO.png"
 )
